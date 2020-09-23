@@ -69,14 +69,17 @@ quick_error! {
 }
 
 #[inline]
-pub(crate) fn read_point_from<R: std::io::Read>(mut source: &mut R, header: &Header) -> Result<Point> {
+pub(crate) fn read_point_from<R: std::io::Read>(
+    mut source: &mut R,
+    header: &Header,
+) -> Result<Point> {
     let point = raw::Point::read_from(&mut source, header.point_format())
         .map(|raw_point| Point::new(raw_point, header.transforms()));
     point
 }
 
 /// Trait to specify behaviour a a PointReader
-pub(crate) trait PointReader: Debug {
+pub(crate) trait PointReader: Debug + Send {
     fn read_next(&mut self) -> Option<Result<Point>>;
     fn seek(&mut self, position: u64) -> Result<()>;
     fn header(&self) -> &Header;
@@ -99,7 +102,7 @@ impl<'a> Iterator for PointIterator<'a> {
 }
 
 #[derive(Debug)]
-struct UncompressedPointReader<R: std::io::Read + Seek> {
+struct UncompressedPointReader<R: std::io::Read + Seek + Send> {
     source: R,
     header: Header,
     offset_to_point_data: u64,
@@ -107,7 +110,7 @@ struct UncompressedPointReader<R: std::io::Read + Seek> {
     last_point_idx: u64,
 }
 
-impl<R: std::io::Read + Seek + Debug> PointReader for UncompressedPointReader<R> {
+impl<R: std::io::Read + Seek + Debug + Send> PointReader for UncompressedPointReader<R> {
     fn read_next(&mut self) -> Option<Result<Point>> {
         if self.last_point_idx < self.header.number_of_points() {
             self.last_point_idx += 1;
@@ -185,11 +188,11 @@ pub trait Read {
 
 /// Reads LAS data.
 #[derive(Debug)]
-pub struct Reader {
-    point_reader: Box<dyn PointReader>,
+pub struct Reader<'a> {
+    point_reader: Box<dyn PointReader + 'a>,
 }
 
-impl Reader {
+impl<'a> Reader<'a> {
     /// Creates a new reader.
     ///
     /// This does *not* wrap the `Read` in a `BufRead`, so if you're concered about performance you
@@ -204,7 +207,7 @@ impl Reader {
     /// let file = File::open("tests/data/autzen.las").unwrap();
     /// let reader = Reader::new(BufReader::new(file)).unwrap();
     /// ```
-    pub fn new<R: std::io::Read + Seek + Debug + 'static>(mut read: R) -> Result<Reader> {
+    pub fn new<R: std::io::Read + Seek + Debug + Send + 'a>(mut read: R) -> Result<Reader<'a>> {
         use std::io::Read;
 
         let raw_header = raw::Header::read_from(&mut read)?;
@@ -283,7 +286,7 @@ impl Reader {
     }
 }
 
-impl Read for Reader {
+impl<'a> Read for Reader<'a> {
     /// Returns a reference to this reader's header.
     fn header(&self) -> &Header {
         self.point_reader.header()
@@ -307,7 +310,7 @@ impl Read for Reader {
     }
 }
 
-impl Reader {
+impl<'a> Reader<'a> {
     /// Creates a new reader from a path.
     ///
     /// The underlying `File` is wrapped in a `BufReader` for performance reasons.
@@ -318,7 +321,7 @@ impl Reader {
     /// # use las::Reader;
     /// let reader = Reader::from_path("tests/data/autzen.las").unwrap();
     /// ```
-    pub fn from_path<P: AsRef<Path>>(path: P) -> Result<Reader> {
+    pub fn from_path<P: AsRef<Path>>(path: P) -> Result<Reader<'a>> {
         File::open(path)
             .map_err(::Error::from)
             .and_then(|file| Reader::new(BufReader::new(file)))

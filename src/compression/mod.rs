@@ -33,7 +33,7 @@ fn create_laszip_vlr(laszip_vlr: &LazVlr) -> std::io::Result<Vlr> {
 /// 1) call the decompressor that reads & decompress the next point
 /// and put its data in an in-memory buffer
 /// 2) read the buffer to get the decompress point
-pub(crate) struct CompressedPointReader<'a, R: Read + Seek> {
+pub(crate) struct CompressedPointReader<'a, R: Read + Seek + Send> {
     /// decompressor that does the actual job
     decompressor: laz::las::laszip::LasZipDecompressor<'a, R>,
     header: Header,
@@ -42,7 +42,7 @@ pub(crate) struct CompressedPointReader<'a, R: Read + Seek> {
     last_point_idx: u64,
 }
 
-impl<'a, R: Read + Seek> CompressedPointReader<'a, R> {
+impl<'a, R: Read + Seek + Send> CompressedPointReader<'a, R> {
     pub(crate) fn new(source: R, header: Header) -> Result<Self> {
         let laszip_vlr = match header.vlrs().iter().find(|vlr| is_laszip_vlr(*vlr)) {
             None => return Err(Error::LasZipVlrNotFound),
@@ -59,7 +59,7 @@ impl<'a, R: Read + Seek> CompressedPointReader<'a, R> {
     }
 }
 
-impl<'a, R: Read + Seek> Debug for CompressedPointReader<'a, R> {
+impl<'a, R: Read + Seek + Send> Debug for CompressedPointReader<'a, R> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(
             f,
@@ -69,7 +69,7 @@ impl<'a, R: Read + Seek> Debug for CompressedPointReader<'a, R> {
     }
 }
 
-impl<'a, R: Read + Seek> PointReader for CompressedPointReader<'a, R> {
+impl<'a, R: Read + Seek + Send> PointReader for CompressedPointReader<'a, R> {
     fn read_next(&mut self) -> Option<Result<Point>> {
         if self.last_point_idx < self.header.number_of_points() {
             self.last_point_idx += 1;

@@ -19,7 +19,8 @@ num = "0.1"
 quick-error = "1.2"
 uuid = "0.6"
 
-laz = { version = "0.3.0", optional = true }
+laz = { git = "https://github.com/Mortano/laz-rs.git", branch = "make-decompressor-send", optional = true }
+# laz = { version = "0.4.0", optional = true }
 
 
 [badges]
