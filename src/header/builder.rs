@@ -94,10 +94,10 @@ impl Builder {
         let mut point_format = Format::new(raw_header.point_data_record_format)?;
         let n = point_format.len();
         if raw_header.point_data_record_length < n {
-            return Err(Error::PointDataRecordLength(
-                point_format,
-                raw_header.point_data_record_length,
-            )
+            return Err(Error::PointDataRecordLength {
+                format: point_format,
+                len: raw_header.point_data_record_length,
+            }
             .into());
         } else if n < raw_header.point_data_record_length {
             point_format.extra_bytes = raw_header.point_data_record_length - n;
@@ -118,7 +118,7 @@ impl Builder {
                 .as_las_str()?
                 .to_string(),
             gps_time_type: raw_header.global_encoding.into(),
-            guid: Uuid::from_bytes(&raw_header.guid).unwrap(),
+            guid: Uuid::from_bytes(raw_header.guid),
             has_synthetic_return_numbers: raw_header.global_encoding & 8 == 8,
             padding: raw_header.padding,
             point_format: point_format,
@@ -191,7 +191,11 @@ impl Builder {
         }
         // TODO check waveforms
         if !self.version.supports_point_format(self.point_format) {
-            return Err(Error::Format(self.version, self.point_format).into());
+            return Err(Error::Format {
+                version: self.version,
+                format: self.point_format,
+            }
+            .into());
         }
         let mut vlrs = Vec::new();
         let mut evlrs = Vec::new();

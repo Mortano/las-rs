@@ -49,27 +49,26 @@ use std::path::Path;
 use compression::CompressedPointReader;
 
 use std::fmt::Debug;
+use thiserror::Error;
 use {raw, Builder, Header, Point, Result, Vlr};
 
-quick_error! {
-    /// Error while reading.
-    #[derive(Clone, Copy, Debug)]
-    pub enum Error {
-        /// The offset to the point data was too small.
-        OffsetToPointDataTooSmall(offset: u32) {
-            description("offset to point data too small")
-            display("offset to point data too small: {}", offset)
-        }
-        /// The offset to the start of the evlrs is too small.
-        OffsetToEvlrsTooSmall(offset: u64) {
-            description("offset the evlrs is too small")
-            display("offset to the evlrs is too small: {}", offset)
-        }
-    }
+/// Error while reading.
+#[derive(Error, Clone, Copy, Debug)]
+pub enum Error {
+    /// The offset to the point data was too small.
+    #[error("offset to the point data is too small: {0}")]
+    OffsetToPointDataTooSmall(u32),
+
+    /// The offset to the start of the evlrs is too small.
+    #[error("offset to the start of the evlrs is too small: {0}")]
+    OffsetToEvlrsTooSmall(u64),
 }
 
 #[inline]
-pub(crate) fn read_point_from<R: std::io::Read>(mut source: &mut R, header: &Header) -> Result<Point> {
+pub(crate) fn read_point_from<R: std::io::Read>(
+    mut source: &mut R,
+    header: &Header,
+) -> Result<Point> {
     let point = raw::Point::read_from(&mut source, header.point_format())
         .map(|raw_point| Point::new(raw_point, header.transforms()));
     point
@@ -87,7 +86,7 @@ pub(crate) trait PointReader: Debug {
 /// This struct is generally created by calling `points()` on `Reader`.
 #[derive(Debug)]
 pub struct PointIterator<'a> {
-    point_reader: &'a mut PointReader,
+    point_reader: &'a mut dyn PointReader,
 }
 
 impl<'a> Iterator for PointIterator<'a> {
@@ -118,7 +117,7 @@ impl<R: std::io::Read + Seek + Debug> PointReader for UncompressedPointReader<R>
     }
 
     fn seek(&mut self, position: u64) -> Result<()> {
-        self.last_point_idx = position - 1;
+        self.last_point_idx = position;
         self.source.seek(SeekFrom::Start(
             self.offset_to_point_data + position * u64::from(self.header.point_format().len()),
         ))?;
@@ -221,7 +220,7 @@ impl Reader {
         }
 
         for _ in 0..number_of_variable_length_records {
-            let vlr = raw::Vlr::read_from(&mut read, false).and_then(Vlr::new)?;
+            let vlr = raw::Vlr::read_from(&mut read, false).map(Vlr::new)?;
             position += vlr.len(false) as u64;
             builder.vlrs.push(vlr);
         }
@@ -245,7 +244,7 @@ impl Reader {
             }
             builder
                 .evlrs
-                .push(raw::Vlr::read_from(&mut read, true).and_then(Vlr::new)?);
+                .push(raw::Vlr::read_from(&mut read, true).map(Vlr::new)?);
         }
 
         read.seek(SeekFrom::Start(offset_to_point_data))?;
@@ -345,5 +344,6 @@ mod tests {
         let mut reader = Reader::new(writer.into_inner().unwrap()).unwrap();
         reader.seek(1).unwrap();
         assert_eq!(point, reader.read().unwrap().unwrap());
+        assert_eq!(reader.read().is_none(), true);
     }
 }
