@@ -73,7 +73,6 @@ pub struct Format {
     pub is_compressed: bool,
 }
 
-#[cfg_attr(feature = "cargo-clippy", allow(len_without_is_empty))]
 impl Format {
     /// Creates a new point format from a u8.
     ///
@@ -215,13 +214,21 @@ impl Format {
             if self.has_color {
                 n += 2;
             }
-
-            if self.is_compressed {
-                Ok(point_format_id_uncompressed_to_compressed(n))
-            } else {
-                Ok(n)
-            }
+            Ok(n)
         }
+    }
+
+    /// When the data is compressed (LAZ) the point format id written in the
+    /// header is slightly different to let readers know the data is compressed
+    pub(crate) fn to_writable_u8(&self) -> Result<u8> {
+        self.to_u8()
+            .map(|id|
+                if self.is_compressed {
+                    point_format_id_uncompressed_to_compressed(id)
+                } else {
+                    id
+                }
+            )
     }
 }
 
